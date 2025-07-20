@@ -436,9 +436,12 @@ class YouTubeMonitor:
                 else:
                     published_at = video.published_at
                     
-                # Ensure published_at is a datetime object
+                # Ensure published_at is a datetime object and timezone-aware
                 if isinstance(published_at, str):
                     published_at = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
+                elif published_at.tzinfo is None:
+                    # If it's a naive datetime, assume UTC
+                    published_at = published_at.replace(tzinfo=timezone.utc)
                     
                 hours_since_upload = (datetime.now(timezone.utc) - published_at).total_seconds() / 3600
                 

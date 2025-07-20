@@ -345,52 +345,126 @@ class YouTubeMonitoringSystem:
             db.close()
             await interaction.followup.send(embed=embed)
             
-        @self.discord_bot.tree.command(name="addchannel", description="Add a channel to monitor")
-        async def addchannel(interaction: discord.Interaction, identifier: str, channel_id: str = None):
-            """Add a channel to monitor using handle, URL, or channel ID"""
+        @self.discord_bot.tree.command(name="addchannel", description="Add channel(s) to monitor")
+        async def addchannel(interaction: discord.Interaction, identifiers: str):
+            """Add one or more channels to monitor using handles, URLs, or channel IDs (comma-separated)"""
             await interaction.response.defer()
             
-            # If channel_id is provided, use it directly
-            if channel_id and channel_id.startswith('UC'):
-                target_channel_id = channel_id
-            else:
-                # Extract channel ID from identifier (handle or URL)
-                target_channel_id = self._extract_channel_id(identifier)
-                if not target_channel_id:
-                    await interaction.followup.send("Invalid channel identifier! Please provide a YouTube channel URL, handle, or channel ID.")
-                    return
-                
-                # If it's a handle (not a channel ID), search for the channel
-                if not target_channel_id.startswith('UC'):
-                    # Search for channel by handle
-                    channel_info = self.youtube_monitor.search_channel_by_handle(target_channel_id)
-                    if not channel_info:
-                        await interaction.followup.send(f"Could not find channel with handle @{target_channel_id}")
-                        return
-                    target_channel_id = channel_info['channel_id']
+            # Split by comma and clean up whitespace
+            channel_list = [id.strip() for id in identifiers.split(',')]
             
-            # Fetch channel info directly
-            channel_info = self.youtube_monitor.get_channel_info(target_channel_id)
-            if not channel_info:
-                await interaction.followup.send("Could not fetch channel information!")
+            if not channel_list:
+                await interaction.followup.send("Please provide at least one channel identifier!")
                 return
+            
+            added_channels = []
+            failed_channels = []
+            
+            for identifier in channel_list:
+                if not identifier:
+                    continue
+                    
+                try:
+                    # Check if it's a direct channel ID
+                    if identifier.startswith('UC'):
+                        target_channel_id = identifier
+                    else:
+                        # Extract channel ID from identifier (handle or URL)
+                        target_channel_id = self._extract_channel_id(identifier)
+                        if not target_channel_id:
+                            failed_channels.append(f"{identifier} (invalid format)")
+                            continue
+                        
+                        # If it's a handle (not a channel ID), search for the channel
+                        if not target_channel_id.startswith('UC'):
+                            # Search for channel by handle
+                            channel_info = self.youtube_monitor.search_channel_by_handle(target_channel_id)
+                            if not channel_info:
+                                failed_channels.append(f"{identifier} (not found)")
+                                continue
+                            target_channel_id = channel_info['channel_id']
+                    
+                    # Fetch channel info directly
+                    channel_info = self.youtube_monitor.get_channel_info(target_channel_id)
+                    if not channel_info:
+                        failed_channels.append(f"{identifier} (could not fetch info)")
+                        continue
+                        
+                    # Check if channel already exists
+                    db = SessionLocal()
+                    existing_channel = db.query(Channel).filter_by(channel_id=target_channel_id).first()
+                    if existing_channel:
+                        failed_channels.append(f"{channel_info['title']} (already exists)")
+                        db.close()
+                        continue
+                    
+                    # Add to database
+                    channel = Channel(**channel_info)
+                    db.add(channel)
+                    db.commit()
+                    db.close()
+                    
+                    added_channels.append({
+                        'title': channel_info['title'],
+                        'subscribers': channel_info['subscriber_count'],
+                        'videos': channel_info['video_count']
+                    })
+                    
+                except Exception as e:
+                    failed_channels.append(f"{identifier} (error: {str(e)})")
+            
+            # Create response embed
+            if added_channels:
+                embed = discord.Embed(
+                    title="✅ Channels Added",
+                    description=f"Successfully added **{len(added_channels)}** channel(s) to monitoring!",
+                    color=discord.Color.green()
+                )
                 
-            # Add to database
-            db = SessionLocal()
-            channel = Channel(**channel_info)
-            db.merge(channel)
-            db.commit()
-            db.close()
+                # Add fields for added channels (limit to first 10 to avoid Discord limits)
+                for i, channel in enumerate(added_channels[:10]):
+                    embed.add_field(
+                        name=f"✅ {i+1}. {channel['title']}",
+                        value=f"Subscribers: {channel['subscribers']:,}\nVideos: {channel['videos']}",
+                        inline=True
+                    )
+                
+                if len(added_channels) > 10:
+                    embed.add_field(
+                        name="📊 Summary",
+                        value=f"Added {len(added_channels)} channels total",
+                        inline=False
+                    )
+                
+                await interaction.followup.send(embed=embed)
             
-            embed = discord.Embed(
-                title="✅ Channel Added",
-                description=f"**{channel_info['title']}** has been added to monitoring!",
-                color=discord.Color.green()
-            )
-            embed.add_field(name="Subscribers", value=f"{channel_info['subscriber_count']:,}", inline=True)
-            embed.add_field(name="Videos", value=f"{channel_info['video_count']}", inline=True)
+            # Send separate message for failed channels if any
+            if failed_channels:
+                failed_embed = discord.Embed(
+                    title="❌ Failed to Add",
+                    description=f"**{len(failed_channels)}** channel(s) could not be added:",
+                    color=discord.Color.red()
+                )
+                
+                # Add failed channels (limit to first 10)
+                for i, failed in enumerate(failed_channels[:10]):
+                    failed_embed.add_field(
+                        name=f"❌ {i+1}. {failed}",
+                        value="",
+                        inline=False
+                    )
+                
+                if len(failed_channels) > 10:
+                    failed_embed.add_field(
+                        name="📊 Summary",
+                        value=f"Failed to add {len(failed_channels)} channels total",
+                        inline=False
+                    )
+                
+                await interaction.followup.send(embed=failed_embed)
             
-            await interaction.followup.send(embed=embed)
+            if not added_channels and not failed_channels:
+                await interaction.followup.send("No valid channel identifiers provided!")
             
         @self.discord_bot.tree.command(name="removechannel", description="Remove a channel from monitoring")
         async def removechannel(interaction: discord.Interaction, handle: str):

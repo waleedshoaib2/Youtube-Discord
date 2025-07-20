@@ -39,7 +39,13 @@ class VideoAnalytics:
                 normalized_views.append(normalized_24h_views)
             elif video.view_count > 0:
                 # Fallback: use current views with age adjustment
-                hours_old = (datetime.now(timezone.utc) - video.published_at).total_seconds() / 3600
+                # Handle timezone-aware vs naive datetime
+                if video.published_at.tzinfo is None:
+                    published_at = video.published_at.replace(tzinfo=timezone.utc)
+                else:
+                    published_at = video.published_at
+                    
+                hours_old = (datetime.now(timezone.utc) - published_at).total_seconds() / 3600
                 if hours_old < 24:
                     normalized_24h_views = (video.view_count / hours_old) * 24
                 else:
@@ -106,7 +112,13 @@ class VideoAnalytics:
             ).order_by(ChannelStats.date.desc()).first()
             
         # Get normalized view count for comparison
-        hours_old = (datetime.now(timezone.utc) - video.published_at).total_seconds() / 3600
+        # Handle timezone-aware vs naive datetime
+        if video.published_at.tzinfo is None:
+            published_at = video.published_at.replace(tzinfo=timezone.utc)
+        else:
+            published_at = video.published_at
+            
+        hours_old = (datetime.now(timezone.utc) - published_at).total_seconds() / 3600
         
         if hours_old < 24:
             normalized_views = (video.view_count / hours_old) * 24

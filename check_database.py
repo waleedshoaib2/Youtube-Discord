@@ -169,7 +169,13 @@ def check_recent_shorts_activity():
     for channel_name, videos in channel_activity.items():
         print(f"📺 {channel_name}:")
         for video in videos[:3]:  # Show 3 most recent per channel
-            hours_old = (datetime.now(timezone.utc) - video.published_at).total_seconds() / 3600
+            # Handle timezone-aware vs naive datetime
+            if video.published_at.tzinfo is None:
+                published_at = video.published_at.replace(tzinfo=timezone.utc)
+            else:
+                published_at = video.published_at
+                
+            hours_old = (datetime.now(timezone.utc) - published_at).total_seconds() / 3600
             days_old = hours_old / 24
             
             if days_old < 1:
@@ -198,7 +204,13 @@ def check_recent_shorts_activity():
         Video.published_at >= month_ago
     ).count()
     
-    print(f"  • Last 24 hours: {len([v for v in all_shorts if (datetime.now(timezone.utc) - v.published_at).total_seconds() < 86400])}")
+    # Count videos from last 24 hours (handle timezone properly)
+    day_ago = datetime.now(timezone.utc) - timedelta(days=1)
+    recent_24h = len([v for v in all_shorts if 
+        (v.published_at.replace(tzinfo=timezone.utc) if v.published_at.tzinfo is None else v.published_at) >= day_ago
+    ])
+    
+    print(f"  • Last 24 hours: {recent_24h}")
     print(f"  • Last 7 days: {week_shorts}")
     print(f"  • Last 30 days: {month_shorts}")
     print(f"  • Total shorts: {db.query(Video).filter(Video.is_short == True).count()}")
