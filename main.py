@@ -10,7 +10,6 @@ from config import Config
 from database import SessionLocal, Channel, Video
 from youtube_monitor import YouTubeMonitor
 from analytics import VideoAnalytics
-from transcript_handler import TranscriptHandler
 from discord_bot import YouTubeBot
 
 logging.basicConfig(
@@ -23,7 +22,6 @@ class YouTubeMonitoringSystem:
     def __init__(self):
         self.youtube_monitor = YouTubeMonitor()
         self.analytics = VideoAnalytics()
-        self.transcript_handler = TranscriptHandler()
         self.discord_bot = None
         self.monitoring_active = True
         
@@ -841,8 +839,8 @@ class YouTubeMonitoringSystem:
         """Check recent SHORT videos for performance threshold"""
         db = SessionLocal()
         
-        # Get SHORT videos from last 72 hours that haven't been notified
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=72)
+        # Get SHORT videos from last 24 hours that haven't been notified
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
         recent_videos = db.query(Video).filter(
             Video.channel_id == channel_id,
             Video.published_at >= cutoff,
@@ -850,6 +848,10 @@ class YouTubeMonitoringSystem:
             Video.is_short == True  # Only check SHORT videos
         ).all()
         
+        if not recent_videos:
+            db.close()
+            return
+            
         channel = db.query(Channel).filter_by(channel_id=channel_id).first()
         
         for video in recent_videos:
@@ -859,7 +861,7 @@ class YouTubeMonitoringSystem:
                 recent_videos_count=25
             )
             
-            if is_above and performance.get('hours_old', 0) >= 4:  # Wait at least 4 hours
+            if is_above and performance.get('hours_old', 0) >= 2:  # Wait at least 2 hours
                 # Prepare video data
                 video_data = {
                     'video_id': video.video_id,
@@ -897,13 +899,6 @@ class YouTubeMonitoringSystem:
             return
             
         try:
-            # Get transcript for SHORT videos (often important for Reddit stories)
-            transcript = self.transcript_handler.get_transcript(video_data['video_id'])
-            if transcript:
-                video_data['transcript_preview'] = self.transcript_handler.create_summary_preview(transcript)
-            else:
-                video_data['transcript_preview'] = "Transcript not available"
-                
             # Create channel data dict
             channel_data = {
                 'channel_id': channel.channel_id,
