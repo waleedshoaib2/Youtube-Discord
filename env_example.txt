@@ -1,0 +1,19 @@
+# YouTube API Keys (comma-separated for rotation)
+# Get these from: https://console.cloud.google.com/apis/credentials
+YOUTUBE_API_KEYS=AIzaSy..._key1,AIzaSy..._key2,AIzaSy..._key3,AIzaSy..._key4
+
+# Discord Bot Configuration
+# Get bot token from: https://discord.com/developers/applications
+DISCORD_BOT_TOKEN=your_discord_bot_token_here
+DISCORD_CHANNEL_ID=your_channel_id_here
+
+# Database Configuration
+DATABASE_URL=sqlite:///youtube_monitor.db
+
+# Monitoring Settings
+CHECK_INTERVAL_MINUTES=60  # Check every hour (more efficient)
+VIEW_THRESHOLD_PERCENTILE=75
+
+# API Quota Settings
+QUOTA_WARNING_THRESHOLD=8000  # Switch keys at 80% usage
+QUOTA_EMERGENCY_THRESHOLD=9500  # Emergency switch at 95% 
