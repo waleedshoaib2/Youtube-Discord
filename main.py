@@ -356,11 +356,20 @@ class YouTubeMonitoringSystem:
                 await interaction.followup.send("Invalid channel handle! Please provide a YouTube channel URL or handle.")
                 return
                 
-            # Fetch channel info
-            channel_info = self.youtube_monitor.get_channel_info(channel_id)
-            if not channel_info:
-                await interaction.followup.send("Could not fetch channel information!")
-                return
+            # If it's a handle (not a channel ID), search for the channel
+            if not channel_id.startswith('UC'):
+                # Search for channel by handle
+                channel_info = self.youtube_monitor.search_channel_by_handle(channel_id)
+                if not channel_info:
+                    await interaction.followup.send(f"Could not find channel with handle @{channel_id}")
+                    return
+                channel_id = channel_info['channel_id']
+            else:
+                # Fetch channel info directly
+                channel_info = self.youtube_monitor.get_channel_info(channel_id)
+                if not channel_info:
+                    await interaction.followup.send("Could not fetch channel information!")
+                    return
                 
             # Add to database
             db = SessionLocal()
@@ -649,6 +658,11 @@ class YouTubeMonitoringSystem:
         # Try if it's just the channel ID
         if url.startswith('UC') and len(url) == 24:
             return url
+            
+        # Handle @handle format
+        if url.startswith('@'):
+            # Remove @ and return the handle for API search
+            return url[1:]  # Return handle without @
             
         return None
         

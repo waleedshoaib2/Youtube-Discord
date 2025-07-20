@@ -227,34 +227,58 @@ class YouTubeMonitor:
         return duration_seconds <= 60
         
     def get_channel_info(self, channel_id):
-        """Fetch channel information with automatic key rotation"""
+        """Get channel information"""
         def make_request():
-            request = self.youtube.channels().list(
-                part="snippet,statistics,contentDetails",
+            return self.youtube.channels().list(
+                part='snippet,statistics,contentDetails',
                 id=channel_id
-            )
-            response = request.execute()
-            self.add_quota_usage(1)
-            return response
+            ).execute()
             
         try:
-            response = self._api_request_with_retry(make_request)
+            result = self._api_request_with_retry(make_request)
+            self.add_quota_usage(1)
             
-            if not response['items']:
+            if result['items']:
+                channel_data = result['items'][0]
+                return {
+                    'channel_id': channel_data['id'],
+                    'title': channel_data['snippet']['title'],
+                    'description': channel_data['snippet'].get('description', ''),
+                    'thumbnail_url': channel_data['snippet']['thumbnails']['default']['url'],
+                    'subscriber_count': int(channel_data['statistics'].get('subscriberCount', 0)),
+                    'video_count': int(channel_data['statistics'].get('videoCount', 0)),
+                    'upload_playlist_id': channel_data['contentDetails']['relatedPlaylists']['uploads'],
+                    'is_active': True,
+                    'last_checked': datetime.now(timezone.utc)
+                }
+        except Exception as e:
+            logger.error(f"Error getting channel info for {channel_id}: {e}")
+            return None
+            
+    def search_channel_by_handle(self, handle):
+        """Search for channel by handle using YouTube API"""
+        def make_request():
+            return self.youtube.search().list(
+                part='snippet',
+                q=handle,
+                type='channel',
+                maxResults=1
+            ).execute()
+            
+        try:
+            result = self._api_request_with_retry(make_request)
+            self.add_quota_usage(100)  # Search costs more quota
+            
+            if result['items']:
+                channel_id = result['items'][0]['snippet']['channelId']
+                # Now get full channel info
+                return self.get_channel_info(channel_id)
+            else:
+                logger.warning(f"No channel found for handle: {handle}")
                 return None
                 
-            channel = response['items'][0]
-            return {
-                'channel_id': channel['id'],
-                'title': channel['snippet']['title'],
-                'description': channel['snippet']['description'],
-                'subscriber_count': int(channel['statistics'].get('subscriberCount', 0)),
-                'video_count': int(channel['statistics'].get('videoCount', 0)),
-                'thumbnail_url': channel['snippet']['thumbnails']['high']['url'],
-                'upload_playlist_id': channel['contentDetails']['relatedPlaylists']['uploads']
-            }
         except Exception as e:
-            logger.error(f"Error fetching channel {channel_id}: {e}")
+            logger.error(f"Error searching for channel handle {handle}: {e}")
             return None
             
     def get_playlist_videos(self, playlist_id, max_results=50):
