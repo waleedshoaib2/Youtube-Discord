@@ -46,12 +46,23 @@ class YouTubeMonitoringSystem:
                 return
                 
             embed = discord.Embed(title="Monitored Channels", color=discord.Color.blue())
-            for channel in channels:
+            
+            # Limit to first 20 channels to avoid Discord's 25 field limit
+            for i, channel in enumerate(channels[:20]):
                 embed.add_field(
-                    name=channel.title,
+                    name=f"{i+1}. {channel.title}",
                     value=f"Subscribers: {channel.subscriber_count:,}\nVideos: {channel.video_count}",
                     inline=True
                 )
+            
+            # Add summary if there are more channels
+            if len(channels) > 20:
+                embed.add_field(
+                    name="📊 Summary",
+                    value=f"Showing 20 of {len(channels)} channels\nUse `/listshorts` to see recent shorts",
+                    inline=False
+                )
+            
             await interaction.followup.send(embed=embed)
             
         @self.discord_bot.tree.command(name="listshorts", description="List recent short videos")
@@ -96,17 +107,26 @@ class YouTubeMonitoringSystem:
                 await interaction.followup.send("No short videos found!")
                 return
                 
-            for video in videos:
+            # Limit to first 15 videos to avoid Discord's 25 field limit
+            for i, video in enumerate(videos[:15]):
                 # Get channel info
                 channel = db.query(Channel).filter_by(channel_id=video.channel_id).first()
                 channel_name = channel.title if channel else "Unknown Channel"
                 
                 embed.add_field(
-                    name=f"📱 {video.title[:50]}...",
+                    name=f"📱 {i+1}. {video.title[:40]}...",
                     value=f"**Channel**: {channel_name}\n"
                           f"**Duration**: {video.duration_seconds}s\n"
                           f"**Views**: {video.view_count:,}\n"
                           f"**Published**: {video.published_at.strftime('%Y-%m-%d %H:%M')}",
+                    inline=False
+                )
+            
+            # Add summary if there are more videos
+            if len(videos) > 15:
+                embed.add_field(
+                    name="📊 Summary",
+                    value=f"Showing 15 of {len(videos)} recent shorts",
                     inline=False
                 )
                 
