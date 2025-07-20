@@ -227,6 +227,188 @@ class YouTubeMonitoringSystem:
             await self.check_all_channels()
             await interaction.followup.send("Manual check completed!")
             
+        @self.discord_bot.tree.command(name="topchannel", description="Show top performing videos for a specific channel")
+        async def topchannel(interaction: discord.Interaction, channel_handle: str, timeframe: int = 24):
+            """Show top performing videos for a specific channel"""
+            await interaction.response.defer()
+            
+            db = SessionLocal()
+            
+            # Find channel by handle or name
+            channel = db.query(Channel).filter(
+                (Channel.title.ilike(f"%{channel_handle}%")) |
+                (Channel.channel_id.ilike(f"%{channel_handle}%"))
+            ).first()
+            
+            if not channel:
+                await interaction.followup.send(f"Channel '{channel_handle}' not found!")
+                return
+                
+            # Get videos from the specified timeframe (in hours)
+            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=timeframe)
+            
+            videos = db.query(Video).filter(
+                Video.channel_id == channel.channel_id,
+                Video.published_at >= cutoff_time,
+                Video.is_short == True
+            ).order_by(Video.view_count.desc()).limit(10).all()
+            
+            db.close()
+            
+            if not videos:
+                embed = discord.Embed(
+                    title=f"No Shorts Found for {channel.title}",
+                    description=f"No shorts found in the last {timeframe} hours",
+                    color=discord.Color.orange()
+                )
+                await interaction.followup.send(embed=embed)
+                return
+                
+            embed = discord.Embed(
+                title=f"🔥 Top Shorts - {channel.title}",
+                description=f"Last {timeframe} hours | {len(videos)} shorts found",
+                color=discord.Color.red()
+            )
+            
+            for i, video in enumerate(videos):
+                # Ensure published_at is timezone-aware
+                if video.published_at.tzinfo is None:
+                    published_at = video.published_at.replace(tzinfo=timezone.utc)
+                else:
+                    published_at = video.published_at
+                
+                hours_old = (datetime.now(timezone.utc) - published_at).total_seconds() / 3600
+                
+                embed.add_field(
+                    name=f"#{i+1} 📱 {video.title[:50]}...",
+                    value=f"**Views**: {video.view_count:,}\n"
+                          f"**Duration**: {video.duration_seconds}s\n"
+                          f"**Age**: {hours_old:.1f}h ago\n"
+                          f"**Published**: {video.published_at.strftime('%Y-%m-%d %H:%M')}",
+                    inline=False
+                )
+                
+            await interaction.followup.send(embed=embed)
+            
+        @self.discord_bot.tree.command(name="top", description="Show top performing videos across all channels")
+        async def top(interaction: discord.Interaction, timeframe: int = 24):
+            """Show top performing videos across all channels"""
+            await interaction.response.defer()
+            
+            db = SessionLocal()
+            
+            # Get videos from the specified timeframe (in hours)
+            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=timeframe)
+            
+            videos = db.query(Video).filter(
+                Video.published_at >= cutoff_time,
+                Video.is_short == True
+            ).order_by(Video.view_count.desc()).limit(15).all()
+            
+            if not videos:
+                embed = discord.Embed(
+                    title="No Shorts Found",
+                    description=f"No shorts found in the last {timeframe} hours",
+                    color=discord.Color.orange()
+                )
+                await interaction.followup.send(embed=embed)
+                return
+                
+            embed = discord.Embed(
+                title=f"🏆 Top Performing Shorts",
+                description=f"Last {timeframe} hours | {len(videos)} shorts found",
+                color=discord.Color.gold()
+            )
+            
+            for i, video in enumerate(videos):
+                # Get channel info
+                channel = db.query(Channel).filter_by(channel_id=video.channel_id).first()
+                channel_name = channel.title if channel else "Unknown Channel"
+                
+                # Ensure published_at is timezone-aware
+                if video.published_at.tzinfo is None:
+                    published_at = video.published_at.replace(tzinfo=timezone.utc)
+                else:
+                    published_at = video.published_at
+                
+                hours_old = (datetime.now(timezone.utc) - published_at).total_seconds() / 3600
+                
+                embed.add_field(
+                    name=f"#{i+1} 📱 {video.title[:40]}...",
+                    value=f"**Channel**: {channel_name}\n"
+                          f"**Views**: {video.view_count:,}\n"
+                          f"**Duration**: {video.duration_seconds}s\n"
+                          f"**Age**: {hours_old:.1f}h ago",
+                    inline=False
+                )
+                
+            db.close()
+            await interaction.followup.send(embed=embed)
+            
+        @self.discord_bot.tree.command(name="addchannel", description="Add a channel to monitor")
+        async def addchannel(interaction: discord.Interaction, handle: str):
+            """Add a channel to monitor"""
+            await interaction.response.defer()
+            
+            # Extract channel ID from handle
+            channel_id = self._extract_channel_id(handle)
+            if not channel_id:
+                await interaction.followup.send("Invalid channel handle! Please provide a YouTube channel URL or handle.")
+                return
+                
+            # Fetch channel info
+            channel_info = self.youtube_monitor.get_channel_info(channel_id)
+            if not channel_info:
+                await interaction.followup.send("Could not fetch channel information!")
+                return
+                
+            # Add to database
+            db = SessionLocal()
+            channel = Channel(**channel_info)
+            db.merge(channel)
+            db.commit()
+            db.close()
+            
+            embed = discord.Embed(
+                title="✅ Channel Added",
+                description=f"**{channel_info['title']}** has been added to monitoring!",
+                color=discord.Color.green()
+            )
+            embed.add_field(name="Subscribers", value=f"{channel_info['subscriber_count']:,}", inline=True)
+            embed.add_field(name="Videos", value=f"{channel_info['video_count']}", inline=True)
+            
+            await interaction.followup.send(embed=embed)
+            
+        @self.discord_bot.tree.command(name="removechannel", description="Remove a channel from monitoring")
+        async def removechannel(interaction: discord.Interaction, handle: str):
+            """Remove a channel from monitoring"""
+            await interaction.response.defer()
+            
+            db = SessionLocal()
+            
+            # Find channel by handle or name
+            channel = db.query(Channel).filter(
+                (Channel.title.ilike(f"%{handle}%")) |
+                (Channel.channel_id.ilike(f"%{handle}%"))
+            ).first()
+            
+            if not channel:
+                await interaction.followup.send(f"Channel '{handle}' not found!")
+                return
+                
+            channel_name = channel.title
+            db.delete(channel)
+            db.commit()
+            db.close()
+            
+            embed = discord.Embed(
+                title="❌ Channel Removed",
+                description=f"**{channel_name}** has been removed from monitoring!",
+                color=discord.Color.red()
+            )
+            
+            await interaction.followup.send(embed=embed)
+            
         # Add prefix commands using message events
         @self.discord_bot.event
         async def on_message(message):
