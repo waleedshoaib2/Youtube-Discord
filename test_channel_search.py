@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+python batch_add_channels.py#!/usr/bin/env python3
 """
 Test Channel Search - Debug channel search functionality
 """
