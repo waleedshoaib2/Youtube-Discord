@@ -10,108 +10,45 @@ class VideoAnalytics:
     def __init__(self):
         self.db = SessionLocal()
         
-    def calculate_channel_statistics(self, channel_id, days=30):
-        """Calculate channel performance statistics"""
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
-        
-        # Get recent videos
+    def calculate_channel_average_views(self, channel_id, recent_videos_count=25):
+        """Calculate average views from the last N videos of a channel"""
+        # Get the last N videos from the channel
         recent_videos = self.db.query(Video).filter(
-            Video.channel_id == channel_id,
-            Video.published_at >= cutoff_date
-        ).all()
+            Video.channel_id == channel_id
+        ).order_by(Video.published_at.desc()).limit(recent_videos_count).all()
         
         if not recent_videos:
-            return None
+            logger.warning(f"No videos found for channel {channel_id}")
+            return 0
             
-        # Calculate normalized views (views per hour in first 24h)
-        normalized_views = []
-        for video in recent_videos:
-            # Get first 24h snapshot or estimate
-            first_snapshot = self.db.query(ViewSnapshot).filter(
-                ViewSnapshot.video_id == video.video_id,
-                ViewSnapshot.hours_since_upload <= 24
-            ).order_by(ViewSnapshot.hours_since_upload.desc()).first()
-            
-            if first_snapshot:
-                # Normalize to 24 hours
-                views_per_hour = first_snapshot.view_count / max(first_snapshot.hours_since_upload, 1)
-                normalized_24h_views = views_per_hour * 24
-                normalized_views.append(normalized_24h_views)
-            elif video.view_count > 0:
-                # Fallback: use current views with age adjustment
-                # Handle timezone-aware vs naive datetime
-                if video.published_at.tzinfo is None:
-                    published_at = video.published_at.replace(tzinfo=timezone.utc)
-                else:
-                    published_at = video.published_at
-                    
-                hours_old = (datetime.now(timezone.utc) - published_at).total_seconds() / 3600
-                if hours_old < 24:
-                    normalized_24h_views = (video.view_count / hours_old) * 24
-                else:
-                    # Apply decay factor for older videos
-                    decay_factor = 24 / min(hours_old, 168)  # Cap at 1 week
-                    normalized_24h_views = video.view_count * decay_factor
-                normalized_views.append(normalized_24h_views)
-                
-        if not normalized_views:
-            return None
-            
-        # Calculate statistics
-        stats = {
-            'channel_id': channel_id,
-            'date': datetime.now(timezone.utc),
-            'avg_views_24h': np.mean(normalized_views),
-            'avg_views_7d': self._calculate_period_average(channel_id, 7),
-            'avg_views_30d': self._calculate_period_average(channel_id, 30),
-            'percentile_75': np.percentile(normalized_views, 75),
-            'percentile_90': np.percentile(normalized_views, 90),
-            'median_views': np.median(normalized_views),
-            'std_dev': np.std(normalized_views)
-        }
+        # Calculate average views
+        total_views = sum(video.view_count for video in recent_videos)
+        average_views = total_views / len(recent_videos)
         
-        # Save to database
-        channel_stat = ChannelStats(**{k: v for k, v in stats.items() 
-                                     if k in ['channel_id', 'date', 'avg_views_24h', 
-                                            'avg_views_7d', 'avg_views_30d', 
-                                            'percentile_75', 'percentile_90']})
-        self.db.add(channel_stat)
-        self.db.commit()
+        logger.info(f"Channel {channel_id}: Average views from last {len(recent_videos)} videos = {average_views:,.0f}")
         
-        return stats
+        return average_views
         
-    def _calculate_period_average(self, channel_id, days):
-        """Calculate average views for specific period"""
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
-        
-        avg_views = self.db.query(func.avg(Video.view_count)).filter(
-            Video.channel_id == channel_id,
-            Video.published_at >= cutoff_date
-        ).scalar()
-        
-        return float(avg_views) if avg_views else 0
-        
-    def is_video_above_threshold(self, video_id, percentile=75):
-        """Check if video performs above threshold"""
+    def is_video_above_average(self, video_id, recent_videos_count=25):
+        """Check if video performs above the channel's recent average"""
         video = self.db.query(Video).filter_by(video_id=video_id).first()
         if not video:
+            logger.warning(f"Video {video_id} not found in database")
             return False, {}
             
-        # Get latest channel statistics
-        channel_stats = self.db.query(ChannelStats).filter_by(
-            channel_id=video.channel_id
-        ).order_by(ChannelStats.date.desc()).first()
+        # Calculate the channel's average from recent videos
+        channel_average = self.calculate_channel_average_views(video.channel_id, recent_videos_count)
         
-        if not channel_stats:
-            # Calculate if not exists
-            stats_dict = self.calculate_channel_statistics(video.channel_id)
-            if not stats_dict:
-                return False, {}
-            channel_stats = self.db.query(ChannelStats).filter_by(
-                channel_id=video.channel_id
-            ).order_by(ChannelStats.date.desc()).first()
+        if channel_average == 0:
+            logger.warning(f"No average calculated for channel {video.channel_id}")
+            return False, {}
             
-        # Get normalized view count for comparison
+        # Check if current video is above average
+        is_above = video.view_count > channel_average
+        
+        # Calculate performance metrics
+        performance_ratio = video.view_count / channel_average if channel_average > 0 else 0
+        
         # Handle timezone-aware vs naive datetime
         if video.published_at.tzinfo is None:
             published_at = video.published_at.replace(tzinfo=timezone.utc)
@@ -120,25 +57,42 @@ class VideoAnalytics:
             
         hours_old = (datetime.now(timezone.utc) - published_at).total_seconds() / 3600
         
-        if hours_old < 24:
-            normalized_views = (video.view_count / hours_old) * 24
-        else:
-            normalized_views = video.view_count
-            
-        # Compare against thresholds
-        threshold_value = getattr(channel_stats, f'percentile_{percentile}', 0)
-        is_above = normalized_views > threshold_value
-        
         performance_data = {
             'current_views': video.view_count,
-            'normalized_views': normalized_views,
-            'threshold': threshold_value,
-            'percentile': percentile,
-            'performance_ratio': normalized_views / channel_stats.avg_views_24h if channel_stats.avg_views_24h > 0 else 0,
-            'hours_old': hours_old
+            'channel_average': channel_average,
+            'performance_ratio': performance_ratio,
+            'is_above_average': is_above,
+            'hours_old': hours_old,
+            'recent_videos_count': recent_videos_count
         }
         
+        logger.info(f"Video {video_id}: {video.view_count:,} views vs {channel_average:,.0f} average ({performance_ratio:.2f}x)")
+        
         return is_above, performance_data
+        
+    def get_channel_performance_summary(self, channel_id, recent_videos_count=25):
+        """Get a summary of channel performance based on recent videos"""
+        recent_videos = self.db.query(Video).filter(
+            Video.channel_id == channel_id
+        ).order_by(Video.published_at.desc()).limit(recent_videos_count).all()
+        
+        if not recent_videos:
+            return None
+            
+        views = [video.view_count for video in recent_videos]
+        
+        summary = {
+            'channel_id': channel_id,
+            'recent_videos_count': len(recent_videos),
+            'average_views': np.mean(views),
+            'median_views': np.median(views),
+            'max_views': max(views),
+            'min_views': min(views),
+            'std_dev': np.std(views),
+            'total_views': sum(views)
+        }
+        
+        return summary
         
     def get_trending_videos(self, channel_id=None, limit=10):
         """Get currently trending videos based on view velocity"""

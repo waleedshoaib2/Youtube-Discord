@@ -179,6 +179,71 @@ class YouTubeMonitoringSystem:
             
             await interaction.followup.send(embed=embed)
             
+        @self.discord_bot.tree.command(name="channelaverage", description="Show channel average views from recent videos")
+        async def channelaverage(interaction: discord.Interaction, channel_name: str):
+            """Show average views from last 25 videos of a channel"""
+            await interaction.response.defer()
+            
+            db = SessionLocal()
+            
+            # Find channel by name
+            channel = db.query(Channel).filter(
+                Channel.title.ilike(f"%{channel_name}%")
+            ).first()
+            
+            if not channel:
+                await interaction.followup.send(f"Channel '{channel_name}' not found!")
+                db.close()
+                return
+                
+            # Get performance summary
+            summary = self.analytics.get_channel_performance_summary(channel.channel_id, recent_videos_count=25)
+            
+            if not summary:
+                await interaction.followup.send(f"No videos found for channel '{channel.title}'!")
+                db.close()
+                return
+                
+            embed = discord.Embed(
+                title=f"📊 {channel.title} - Performance Summary",
+                description=f"Based on last **{summary['recent_videos_count']}** videos",
+                color=discord.Color.blue()
+            )
+            
+            embed.add_field(
+                name="📈 Average Views", 
+                value=f"{summary['average_views']:,.0f}", 
+                inline=True
+            )
+            embed.add_field(
+                name="📊 Median Views", 
+                value=f"{summary['median_views']:,.0f}", 
+                inline=True
+            )
+            embed.add_field(
+                name="🔥 Max Views", 
+                value=f"{summary['max_views']:,.0f}", 
+                inline=True
+            )
+            embed.add_field(
+                name="📉 Min Views", 
+                value=f"{summary['min_views']:,.0f}", 
+                inline=True
+            )
+            embed.add_field(
+                name="📊 Standard Deviation", 
+                value=f"{summary['std_dev']:,.0f}", 
+                inline=True
+            )
+            embed.add_field(
+                name="📈 Total Views", 
+                value=f"{summary['total_views']:,.0f}", 
+                inline=True
+            )
+            
+            await interaction.followup.send(embed=embed)
+            db.close()
+            
         @self.discord_bot.tree.command(name="apistatus", description="Show detailed API key status")
         async def apistatus(interaction: discord.Interaction):
             """Show detailed API key status"""
@@ -788,10 +853,10 @@ class YouTubeMonitoringSystem:
         channel = db.query(Channel).filter_by(channel_id=channel_id).first()
         
         for video in recent_videos:
-            # Check if SHORT video meets threshold
-            is_above, performance = self.analytics.is_video_above_threshold(
+            # Check if SHORT video meets threshold (above channel average)
+            is_above, performance = self.analytics.is_video_above_average(
                 video.video_id, 
-                Config.VIEW_THRESHOLD_PERCENTILE
+                recent_videos_count=25
             )
             
             if is_above and performance.get('hours_old', 0) >= 4:  # Wait at least 4 hours
