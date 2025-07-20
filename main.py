@@ -346,30 +346,34 @@ class YouTubeMonitoringSystem:
             await interaction.followup.send(embed=embed)
             
         @self.discord_bot.tree.command(name="addchannel", description="Add a channel to monitor")
-        async def addchannel(interaction: discord.Interaction, handle: str):
-            """Add a channel to monitor"""
+        async def addchannel(interaction: discord.Interaction, identifier: str, channel_id: str = None):
+            """Add a channel to monitor using handle, URL, or channel ID"""
             await interaction.response.defer()
             
-            # Extract channel ID from handle
-            channel_id = self._extract_channel_id(handle)
-            if not channel_id:
-                await interaction.followup.send("Invalid channel handle! Please provide a YouTube channel URL or handle.")
-                return
-                
-            # If it's a handle (not a channel ID), search for the channel
-            if not channel_id.startswith('UC'):
-                # Search for channel by handle
-                channel_info = self.youtube_monitor.search_channel_by_handle(channel_id)
-                if not channel_info:
-                    await interaction.followup.send(f"Could not find channel with handle @{channel_id}")
-                    return
-                channel_id = channel_info['channel_id']
+            # If channel_id is provided, use it directly
+            if channel_id and channel_id.startswith('UC'):
+                target_channel_id = channel_id
             else:
-                # Fetch channel info directly
-                channel_info = self.youtube_monitor.get_channel_info(channel_id)
-                if not channel_info:
-                    await interaction.followup.send("Could not fetch channel information!")
+                # Extract channel ID from identifier (handle or URL)
+                target_channel_id = self._extract_channel_id(identifier)
+                if not target_channel_id:
+                    await interaction.followup.send("Invalid channel identifier! Please provide a YouTube channel URL, handle, or channel ID.")
                     return
+                
+                # If it's a handle (not a channel ID), search for the channel
+                if not target_channel_id.startswith('UC'):
+                    # Search for channel by handle
+                    channel_info = self.youtube_monitor.search_channel_by_handle(target_channel_id)
+                    if not channel_info:
+                        await interaction.followup.send(f"Could not find channel with handle @{target_channel_id}")
+                        return
+                    target_channel_id = channel_info['channel_id']
+            
+            # Fetch channel info directly
+            channel_info = self.youtube_monitor.get_channel_info(target_channel_id)
+            if not channel_info:
+                await interaction.followup.send("Could not fetch channel information!")
+                return
                 
             # Add to database
             db = SessionLocal()
