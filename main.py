@@ -291,7 +291,7 @@ class YouTubeMonitoringSystem:
             await interaction.followup.send("Manual check completed!")
             
         @self.discord_bot.tree.command(name="topchannel", description="Show top performing videos for a specific channel")
-        async def topchannel(interaction: discord.Interaction, channel_handle: str, timeframe: int = 24):
+        async def topchannel(interaction: discord.Interaction, channel_handle: str, timeframe: str = "all"):
             """Show top performing videos for a specific channel"""
             await interaction.response.defer()
             
@@ -305,31 +305,52 @@ class YouTubeMonitoringSystem:
             
             if not channel:
                 await interaction.followup.send(f"Channel '{channel_handle}' not found!")
+                db.close()
                 return
                 
-            # Get videos from the specified timeframe (in hours)
-            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=timeframe)
-            
-            videos = db.query(Video).filter(
-                Video.channel_id == channel.channel_id,
-                Video.published_at >= cutoff_time,
-                Video.is_short == True
-            ).order_by(Video.view_count.desc()).limit(10).all()
+            # Handle different timeframe options
+            if timeframe.lower() == "all":
+                # Get all SHORT videos for this channel (no time filter)
+                videos = db.query(Video).filter(
+                    Video.channel_id == channel.channel_id,
+                    Video.is_short == True
+                ).order_by(Video.view_count.desc()).limit(15).all()
+                title = f"🔥 Top Shorts - {channel.title} (All Time)"
+                description = f"{len(videos)} shorts found"
+            else:
+                try:
+                    # Try to parse as hours
+                    hours = int(timeframe)
+                    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+                    
+                    videos = db.query(Video).filter(
+                        Video.channel_id == channel.channel_id,
+                        Video.published_at >= cutoff_time,
+                        Video.is_short == True
+                    ).order_by(Video.view_count.desc()).limit(10).all()
+                    
+                    title = f"🔥 Top Shorts - {channel.title}"
+                    description = f"Last {hours} hours | {len(videos)} shorts found"
+                    
+                except ValueError:
+                    await interaction.followup.send("❌ Invalid timeframe! Use: all, 24, 48, 72, etc.")
+                    db.close()
+                    return
             
             db.close()
             
             if not videos:
                 embed = discord.Embed(
                     title=f"No Shorts Found for {channel.title}",
-                    description=f"No shorts found in the last {timeframe} hours",
+                    description=f"No shorts found for the specified timeframe",
                     color=discord.Color.orange()
                 )
                 await interaction.followup.send(embed=embed)
                 return
                 
             embed = discord.Embed(
-                title=f"🔥 Top Shorts - {channel.title}",
-                description=f"Last {timeframe} hours | {len(videos)} shorts found",
+                title=title,
+                description=description,
                 color=discord.Color.red()
             )
             
@@ -341,10 +362,12 @@ class YouTubeMonitoringSystem:
                     published_at = video.published_at
                 
                 hours_old = (datetime.now(timezone.utc) - published_at).total_seconds() / 3600
+                views_per_hour = video.view_count / max(hours_old, 1)
                 
                 embed.add_field(
                     name=f"#{i+1} 📱 {video.title[:50]}...",
                     value=f"**Views**: {video.view_count:,}\n"
+                          f"**Views/Hour**: {views_per_hour:,.0f}\n"
                           f"**Duration**: {video.duration_seconds}s\n"
                           f"**Age**: {hours_old:.1f}h ago\n"
                           f"**Published**: {video.published_at.strftime('%Y-%m-%d %H:%M')}",
@@ -354,32 +377,52 @@ class YouTubeMonitoringSystem:
             await interaction.followup.send(embed=embed)
             
         @self.discord_bot.tree.command(name="top", description="Show top performing videos across all channels")
-        async def top(interaction: discord.Interaction, timeframe: int = 24):
+        async def top(interaction: discord.Interaction, timeframe: str = "all"):
             """Show top performing videos across all channels"""
             await interaction.response.defer()
             
             db = SessionLocal()
             
-            # Get videos from the specified timeframe (in hours)
-            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=timeframe)
-            
-            videos = db.query(Video).filter(
-                Video.published_at >= cutoff_time,
-                Video.is_short == True
-            ).order_by(Video.view_count.desc()).limit(15).all()
+            # Handle different timeframe options
+            if timeframe.lower() == "all":
+                # Get all SHORT videos (no time filter)
+                videos = db.query(Video).filter(
+                    Video.is_short == True
+                ).order_by(Video.view_count.desc()).limit(20).all()
+                title = "🏆 Top Performing Shorts (All Time)"
+                description = f"{len(videos)} shorts found"
+            else:
+                try:
+                    # Try to parse as hours
+                    hours = int(timeframe)
+                    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+                    
+                    videos = db.query(Video).filter(
+                        Video.published_at >= cutoff_time,
+                        Video.is_short == True
+                    ).order_by(Video.view_count.desc()).limit(15).all()
+                    
+                    title = f"🏆 Top Performing Shorts"
+                    description = f"Last {hours} hours | {len(videos)} shorts found"
+                    
+                except ValueError:
+                    await interaction.followup.send("❌ Invalid timeframe! Use: all, 24, 48, 72, etc.")
+                    db.close()
+                    return
             
             if not videos:
                 embed = discord.Embed(
                     title="No Shorts Found",
-                    description=f"No shorts found in the last {timeframe} hours",
+                    description=f"No shorts found for the specified timeframe",
                     color=discord.Color.orange()
                 )
                 await interaction.followup.send(embed=embed)
+                db.close()
                 return
                 
             embed = discord.Embed(
-                title=f"🏆 Top Performing Shorts",
-                description=f"Last {timeframe} hours | {len(videos)} shorts found",
+                title=title,
+                description=description,
                 color=discord.Color.gold()
             )
             
@@ -395,11 +438,13 @@ class YouTubeMonitoringSystem:
                     published_at = video.published_at
                 
                 hours_old = (datetime.now(timezone.utc) - published_at).total_seconds() / 3600
+                views_per_hour = video.view_count / max(hours_old, 1)
                 
                 embed.add_field(
                     name=f"#{i+1} 📱 {video.title[:40]}...",
                     value=f"**Channel**: {channel_name}\n"
                           f"**Views**: {video.view_count:,}\n"
+                          f"**Views/Hour**: {views_per_hour:,.0f}\n"
                           f"**Duration**: {video.duration_seconds}s\n"
                           f"**Age**: {hours_old:.1f}h ago",
                     inline=False
@@ -808,7 +853,7 @@ class YouTubeMonitoringSystem:
         return None
         
     async def check_all_channels(self):
-        """Check all monitored channels for new SHORT videos"""
+        """Check all monitored channels for new SHORT videos and update existing ones"""
         logger.info("Starting channel check cycle for SHORTS...")
         
         db = SessionLocal()
@@ -823,6 +868,9 @@ class YouTubeMonitoringSystem:
                 # Check each SHORT video against threshold
                 for video_data in new_videos:
                     await self.process_video(video_data, channel)
+                
+                # Update view counts for videos under 3 days old
+                await self.update_recent_video_stats(channel.channel_id)
                     
                 # Also check recent SHORT videos for threshold crossing
                 await self.check_recent_videos(channel.channel_id)
@@ -835,16 +883,55 @@ class YouTubeMonitoringSystem:
             
         logger.info("Channel check cycle completed")
         
-    async def check_recent_videos(self, channel_id):
-        """Check recent SHORT videos for performance threshold"""
+    async def update_recent_video_stats(self, channel_id):
+        """Update view counts for videos under 3 days old"""
         db = SessionLocal()
         
-        # Get SHORT videos from last 24 hours that haven't been notified
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        # Get SHORT videos from last 3 days
+        cutoff = datetime.now(timezone.utc) - timedelta(days=3)
         recent_videos = db.query(Video).filter(
             Video.channel_id == channel_id,
             Video.published_at >= cutoff,
-            Video.notified == False,
+            Video.is_short == True
+        ).all()
+        
+        if not recent_videos:
+            db.close()
+            return
+            
+        updated_count = 0
+        for video in recent_videos:
+            try:
+                # Get updated video statistics from YouTube API
+                updated_stats = self.youtube_monitor.get_video_statistics(video.video_id)
+                if updated_stats:
+                    # Update video with new stats
+                    video.view_count = updated_stats.get('view_count', video.view_count)
+                    video.like_count = updated_stats.get('like_count', video.like_count)
+                    video.comment_count = updated_stats.get('comment_count', video.comment_count)
+                    updated_count += 1
+                    
+                    logger.debug(f"📊 Updated stats for: {video.title[:50]}... ({video.view_count:,} views)")
+                    
+            except Exception as e:
+                logger.error(f"Error updating stats for video {video.video_id}: {e}")
+                continue
+                
+        if updated_count > 0:
+            db.commit()
+            logger.info(f"✅ Updated stats for {updated_count} videos in channel {channel_id}")
+            
+        db.close()
+        
+    async def check_recent_videos(self, channel_id):
+        """Check recent SHORT videos for 400k views threshold - re-monitors under 3 days old"""
+        db = SessionLocal()
+        
+        # Get SHORT videos from last 3 days (regardless of notification status)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=3)
+        recent_videos = db.query(Video).filter(
+            Video.channel_id == channel_id,
+            Video.published_at >= cutoff,
             Video.is_short == True  # Only check SHORT videos
         ).all()
         
@@ -855,13 +942,24 @@ class YouTubeMonitoringSystem:
         channel = db.query(Channel).filter_by(channel_id=channel_id).first()
         
         for video in recent_videos:
-            # Check if SHORT video meets threshold (above channel average)
-            is_above, performance = self.analytics.is_video_above_average(
-                video.video_id, 
-                recent_videos_count=25
-            )
+            # Calculate hours old for logging
+            if video.published_at.tzinfo is None:
+                published_at = video.published_at.replace(tzinfo=timezone.utc)
+            else:
+                published_at = video.published_at
+            hours_old = (datetime.now(timezone.utc) - published_at).total_seconds() / 3600
             
-            if is_above and performance.get('hours_old', 0) >= 2:  # Wait at least 2 hours
+            # Check if SHORT video has reached 400k views (and hasn't been notified yet)
+            if video.view_count >= 400000 and not video.notified:
+                # Calculate performance metrics
+                views_per_hour = video.view_count / max(hours_old, 1)
+                
+                performance = {
+                    'hours_old': hours_old,
+                    'views_per_hour': views_per_hour,
+                    'threshold_reached': '400k views'
+                }
+                
                 # Prepare video data
                 video_data = {
                     'video_id': video.video_id,
@@ -881,6 +979,14 @@ class YouTubeMonitoringSystem:
                 # Mark as notified
                 video.notified = True
                 db.commit()
+                
+                logger.info(f"🎉 400k threshold reached! Notified for: {video.title[:50]}... ({video.view_count:,} views)")
+            elif video.view_count >= 400000 and video.notified:
+                # Log that we're skipping already notified videos
+                logger.debug(f"⏭️ Skipping already notified video: {video.title[:50]}... ({video.view_count:,} views)")
+            else:
+                # Log videos that are still under threshold
+                logger.debug(f"📊 Monitoring: {video.title[:50]}... ({video.view_count:,} views) - {hours_old:.1f}h old")
                 
         db.close()
         
