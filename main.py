@@ -1023,11 +1023,7 @@ class YouTubeMonitoringSystem:
         except Exception as e:
             logger.error(f"Error sending notification: {e}")
             
-    def run_schedule(self):
-        """Run scheduled tasks in separate thread"""
-        while self.monitoring_active:
-            schedule.run_pending()
-            time.sleep(60)  # Check every minute
+
             
     async def start(self):
         """Start the monitoring system for SHORTS"""
@@ -1045,20 +1041,19 @@ class YouTubeMonitoringSystem:
         # Wait a moment for bot to connect
         await asyncio.sleep(2)
         
-        # Schedule regular checks
-        schedule.every(Config.CHECK_INTERVAL_MINUTES).minutes.do(
-            lambda: asyncio.create_task(self.check_all_channels())
-        )
-        
-        logger.info(f"Scheduled SHORTS checks every {Config.CHECK_INTERVAL_MINUTES} minutes")
-        
-        # Start schedule thread
-        schedule_thread = threading.Thread(target=self.run_schedule)
-        schedule_thread.daemon = True
-        schedule_thread.start()
-        
         # Run initial check
         await self.check_all_channels()
+        
+        # Start periodic monitoring
+        logger.info(f"Starting periodic monitoring every {Config.CHECK_INTERVAL_MINUTES} minutes")
+        
+        while self.monitoring_active:
+            try:
+                await asyncio.sleep(Config.CHECK_INTERVAL_MINUTES * 60)  # Convert to seconds
+                await self.check_all_channels()
+            except Exception as e:
+                logger.error(f"Error in monitoring cycle: {e}")
+                await asyncio.sleep(60)  # Wait 1 minute before retrying
         
         # Keep the bot running
         await bot_task
