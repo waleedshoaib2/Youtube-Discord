@@ -291,7 +291,7 @@ class YouTubeMonitoringSystem:
             await interaction.followup.send("Manual check completed!")
             
         @self.discord_bot.tree.command(name="topchannel", description="Show top performing videos for a specific channel")
-        async def topchannel(interaction: discord.Interaction, channel_handle: str, timeframe: str = "all"):
+        async def topchannel(interaction: discord.Interaction, channel_handle: str, timeframe: str = "all", count: int = 10):
             """Show top performing videos for a specific channel"""
             await interaction.response.defer()
             
@@ -314,7 +314,7 @@ class YouTubeMonitoringSystem:
                 videos = db.query(Video).filter(
                     Video.channel_id == channel.channel_id,
                     Video.is_short == True
-                ).order_by(Video.view_count.desc()).limit(15).all()
+                ).order_by(Video.view_count.desc()).limit(count).all()
                 title = f"🔥 Top Shorts - {channel.title} (All Time)"
                 description = f"{len(videos)} shorts found"
             else:
@@ -327,7 +327,7 @@ class YouTubeMonitoringSystem:
                         Video.channel_id == channel.channel_id,
                         Video.published_at >= cutoff_time,
                         Video.is_short == True
-                    ).order_by(Video.view_count.desc()).limit(10).all()
+                    ).order_by(Video.view_count.desc()).limit(count).all()
                     
                     title = f"🔥 Top Shorts - {channel.title}"
                     description = f"Last {hours} hours | {len(videos)} shorts found"
@@ -365,7 +365,7 @@ class YouTubeMonitoringSystem:
                 views_per_hour = video.view_count / max(hours_old, 1)
                 
                 embed.add_field(
-                    name=f"#{i+1} 📱 {video.title[:50]}...",
+                    name=f"#{i+1} 📱 [{video.title[:50]}...](https://youtube.com/watch?v={video.video_id})",
                     value=f"**Views**: {video.view_count:,}\n"
                           f"**Views/Hour**: {views_per_hour:,.0f}\n"
                           f"**Duration**: {video.duration_seconds}s\n"
@@ -377,7 +377,7 @@ class YouTubeMonitoringSystem:
             await interaction.followup.send(embed=embed)
             
         @self.discord_bot.tree.command(name="top", description="Show top performing videos across all channels")
-        async def top(interaction: discord.Interaction, timeframe: str = "all"):
+        async def top(interaction: discord.Interaction, timeframe: str = "all", count: int = 15):
             """Show top performing videos across all channels"""
             await interaction.response.defer()
             
@@ -388,7 +388,7 @@ class YouTubeMonitoringSystem:
                 # Get all SHORT videos (no time filter)
                 videos = db.query(Video).filter(
                     Video.is_short == True
-                ).order_by(Video.view_count.desc()).limit(20).all()
+                ).order_by(Video.view_count.desc()).limit(count).all()
                 title = "🏆 Top Performing Shorts (All Time)"
                 description = f"{len(videos)} shorts found"
             else:
@@ -400,7 +400,7 @@ class YouTubeMonitoringSystem:
                     videos = db.query(Video).filter(
                         Video.published_at >= cutoff_time,
                         Video.is_short == True
-                    ).order_by(Video.view_count.desc()).limit(15).all()
+                    ).order_by(Video.view_count.desc()).limit(count).all()
                     
                     title = f"🏆 Top Performing Shorts"
                     description = f"Last {hours} hours | {len(videos)} shorts found"
@@ -441,7 +441,7 @@ class YouTubeMonitoringSystem:
                 views_per_hour = video.view_count / max(hours_old, 1)
                 
                 embed.add_field(
-                    name=f"#{i+1} 📱 {video.title[:40]}...",
+                    name=f"#{i+1} 📱 [{video.title[:40]}...](https://youtube.com/watch?v={video.video_id})",
                     value=f"**Channel**: {channel_name}\n"
                           f"**Views**: {video.view_count:,}\n"
                           f"**Views/Hour**: {views_per_hour:,.0f}\n"
