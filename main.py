@@ -319,9 +319,24 @@ class YouTubeMonitoringSystem:
                 description = f"{len(videos)} shorts found"
             else:
                 try:
-                    # Try to parse as hours
-                    hours = int(timeframe)
-                    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+                    # Parse timeframe - support both hours and days
+                    timeframe_lower = timeframe.lower()
+                    
+                    if timeframe_lower.endswith('d') or timeframe_lower.endswith('days'):
+                        # Days format: "7d", "3days", etc.
+                        days = int(timeframe_lower.replace('d', '').replace('days', ''))
+                        cutoff_time = datetime.now(timezone.utc) - timedelta(days=days)
+                        time_str = f"{days} days"
+                    elif timeframe_lower.endswith('h') or timeframe_lower.endswith('hours'):
+                        # Hours format: "24h", "48hours", etc.
+                        hours = int(timeframe_lower.replace('h', '').replace('hours', ''))
+                        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+                        time_str = f"{hours} hours"
+                    else:
+                        # Default: assume hours if no suffix
+                        hours = int(timeframe)
+                        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+                        time_str = f"{hours} hours"
                     
                     videos = db.query(Video).filter(
                         Video.channel_id == channel.channel_id,
@@ -330,10 +345,10 @@ class YouTubeMonitoringSystem:
                     ).order_by(Video.view_count.desc()).limit(count).all()
                     
                     title = f"🔥 Top Shorts - {channel.title}"
-                    description = f"Last {hours} hours | {len(videos)} shorts found"
+                    description = f"Last {time_str} | {len(videos)} shorts found"
                     
                 except ValueError:
-                    await interaction.followup.send("❌ Invalid timeframe! Use: all, 24, 48, 72, etc.")
+                    await interaction.followup.send("❌ Invalid timeframe! Use: all, 24, 48, 72, 7d, 3days, 24h, 48hours, etc. Count parameter controls number of results.")
                     db.close()
                     return
             
@@ -393,9 +408,24 @@ class YouTubeMonitoringSystem:
                 description = f"{len(videos)} shorts found"
             else:
                 try:
-                    # Try to parse as hours
-                    hours = int(timeframe)
-                    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+                    # Parse timeframe - support both hours and days
+                    timeframe_lower = timeframe.lower()
+                    
+                    if timeframe_lower.endswith('d') or timeframe_lower.endswith('days'):
+                        # Days format: "7d", "3days", etc.
+                        days = int(timeframe_lower.replace('d', '').replace('days', ''))
+                        cutoff_time = datetime.now(timezone.utc) - timedelta(days=days)
+                        time_str = f"{days} days"
+                    elif timeframe_lower.endswith('h') or timeframe_lower.endswith('hours'):
+                        # Hours format: "24h", "48hours", etc.
+                        hours = int(timeframe_lower.replace('h', '').replace('hours', ''))
+                        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+                        time_str = f"{hours} hours"
+                    else:
+                        # Default: assume hours if no suffix
+                        hours = int(timeframe)
+                        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+                        time_str = f"{hours} hours"
                     
                     videos = db.query(Video).filter(
                         Video.published_at >= cutoff_time,
@@ -403,10 +433,10 @@ class YouTubeMonitoringSystem:
                     ).order_by(Video.view_count.desc()).limit(count).all()
                     
                     title = f"🏆 Top Performing Shorts"
-                    description = f"Last {hours} hours | {len(videos)} shorts found"
+                    description = f"Last {time_str} | {len(videos)} shorts found"
                     
                 except ValueError:
-                    await interaction.followup.send("❌ Invalid timeframe! Use: all, 24, 48, 72, etc.")
+                    await interaction.followup.send("❌ Invalid timeframe! Use: all, 24, 48, 72, 7d, 3days, 24h, 48hours, etc. Count parameter controls number of results.")
                     db.close()
                     return
             
