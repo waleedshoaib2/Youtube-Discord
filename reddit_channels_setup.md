@@ -2,7 +2,7 @@
 
 ## 🎯 Quick Setup for Your 60+ Reddit Story Channels (SHORTS ONLY)
 
-You have **60 Reddit story channels** to monitor. This system now focuses specifically on **YouTube Shorts** (videos under 60 seconds) which are perfect for Reddit story content!
+You have **60 Reddit story channels** to monitor. This system now focuses specifically on **YouTube Shorts** (videos under 3 minutes) which are perfect for Reddit story content!
 
 ## Step 1: Configure for SHORTS Monitoring
 
@@ -68,7 +68,7 @@ With 60 channels checking every 2 hours for SHORTS only:
 
 ### What the Bot Monitors:
 
-1. **YouTube Shorts Only**: Videos under 60 seconds
+1. **YouTube Shorts Only**: Videos under 3 minutes
 2. **Reddit Story Content**: Perfect for short-form storytelling
 3. **Viral Potential**: Shorts that are performing above average
 4. **Engagement Metrics**: Views, likes, comments for shorts
@@ -141,7 +141,7 @@ With 60 Reddit story channels monitoring SHORTS:
 ### If No SHORTS Detected:
 
 1. **Check channel content**: Ensure channels actually post shorts
-2. **Verify duration**: Bot only tracks videos under 60 seconds
+2. **Verify duration**: Bot only tracks videos under 3 minutes
 3. **Use `!list_shorts`**: See what shorts are being detected
 
 ### For Reddit Story SHORTS Issues:

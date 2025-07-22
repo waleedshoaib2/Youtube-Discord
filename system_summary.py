@@ -19,7 +19,7 @@ def show_system_summary():
     
     # System Configuration
     print("\n📋 SYSTEM CONFIGURATION:")
-    print("  • Monitoring: SHORTS only (under 60 seconds)")
+    print("  • Monitoring: SHORTS only (under 3 minutes)")
     print("  • Notification Threshold: 400,000 views")
     print("  • Monitoring Window: 3 days (continuous re-monitoring)")
     print("  • Check Interval: Every 60 minutes")

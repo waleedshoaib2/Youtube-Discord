@@ -222,9 +222,9 @@ class YouTubeMonitor:
         return 0
         
     def _is_short_video(self, duration_str):
-        """Check if video is a short (under 60 seconds)"""
+        """Check if video is a short (under 3 minutes / 180 seconds)"""
         duration_seconds = self._parse_duration(duration_str)
-        return duration_seconds <= 60
+        return duration_seconds <= 180
         
     def get_channel_info(self, channel_id):
         """Get channel information"""
@@ -348,7 +348,7 @@ class YouTubeMonitor:
                     duration_seconds = self._parse_duration(duration_str)
                     
                     # Multiple methods to detect shorts
-                    is_short_duration = duration_seconds <= 60
+                    is_short_duration = duration_seconds <= 180
                     
                     # Check for #Shorts hashtag in title/description
                     title = item['snippet'].get('title', '').lower()
@@ -363,7 +363,8 @@ class YouTubeMonitor:
                     video_type = item.get('snippet', {}).get('videoType', '').lower()
                     is_short_type = video_type == 'short'
                     
-                    # Final determination: duration OR hashtag OR type
+                    # Primary detection: duration (≤ 3 minutes = short)
+                    # Secondary: hashtags and API type (for edge cases only)
                     is_short = is_short_duration or has_shorts_hashtag or is_short_type
                     
                     stats[item['id']] = {
@@ -424,7 +425,7 @@ class YouTubeMonitor:
                 total_videos_count += 1
                 video_stats = stats[video_id]
                 
-                # Only process SHORT videos (60 seconds or less)
+                # Only process SHORT videos (3 minutes or less)
                 if not video_stats.get('is_short', False):
                     logger.debug(f"Skipping non-short video: {video_data['title']} ({video_stats.get('duration_seconds', 0)}s)")
                     continue
