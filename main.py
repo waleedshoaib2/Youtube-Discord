@@ -979,16 +979,16 @@ class YouTubeMonitoringSystem:
                 published_at = video.published_at
             hours_old = (datetime.now(timezone.utc) - published_at).total_seconds() / 3600
             
-            # Check if SHORT video has reached 400k views (and hasn't been notified yet)
-            if video.view_count >= 400000 and not video.notified:
+            # Check if SHORT video has reached 700k views (and hasn't been notified yet)
+            if video.view_count >= 700000 and not video.notified:
                 # Calculate performance metrics
                 views_per_hour = video.view_count / max(hours_old, 1)
                 
                 performance = {
                     'hours_old': hours_old,
                     'views_per_hour': views_per_hour,
-                    'threshold_reached': '400k views',
-                    'performance_ratio': 1.0,  # Default for 400k threshold videos
+                    'threshold_reached': '700k views',
+                    'performance_ratio': 1.0,  # Default for 700k threshold videos
                     'percentile': 95  # Default for high-performing videos
                 }
                 
@@ -1012,8 +1012,8 @@ class YouTubeMonitoringSystem:
                 video.notified = True
                 db.commit()
                 
-                logger.info(f"🎉 400k threshold reached! Notified for: {video.title[:50]}... ({video.view_count:,} views)")
-            elif video.view_count >= 400000 and video.notified:
+                logger.info(f"🎉 700k threshold reached! Notified for: {video.title[:50]}... ({video.view_count:,} views)")
+            elif video.view_count >= 700000 and video.notified:
                 # Log that we're skipping already notified videos
                 logger.debug(f"⏭️ Skipping already notified video: {video.title[:50]}... ({video.view_count:,} views)")
             else:
