@@ -957,7 +957,9 @@ class YouTubeMonitoringSystem:
                 performance = {
                     'hours_old': hours_old,
                     'views_per_hour': views_per_hour,
-                    'threshold_reached': '400k views'
+                    'threshold_reached': '400k views',
+                    'performance_ratio': 1.0,  # Default for 400k threshold videos
+                    'percentile': 95  # Default for high-performing videos
                 }
                 
                 # Prepare video data
