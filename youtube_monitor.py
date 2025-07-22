@@ -333,7 +333,7 @@ class YouTubeMonitor:
             
             def make_request():
                 request = self.youtube.videos().list(
-                    part="statistics,contentDetails",
+                    part="statistics,contentDetails,snippet",
                     id=','.join(batch_ids)
                 )
                 response = request.execute()
@@ -345,15 +345,39 @@ class YouTubeMonitor:
                 
                 for item in response.get('items', []):
                     duration_str = item['contentDetails']['duration']
-                    is_short = self._is_short_video(duration_str)
+                    duration_seconds = self._parse_duration(duration_str)
+                    
+                    # Multiple methods to detect shorts
+                    is_short_duration = duration_seconds <= 60
+                    
+                    # Check for #Shorts hashtag in title/description
+                    title = item['snippet'].get('title', '').lower()
+                    description = item['snippet'].get('description', '').lower()
+                    has_shorts_hashtag = '#shorts' in title or '#shorts' in description
+                    
+                    # Check for vertical aspect ratio indicators in description
+                    has_vertical_indicators = any(indicator in description for indicator in 
+                        ['vertical', 'portrait', 'mobile', 'phone', 'tiktok'])
+                    
+                    # Check video type from API (if available)
+                    video_type = item.get('snippet', {}).get('videoType', '').lower()
+                    is_short_type = video_type == 'short'
+                    
+                    # Final determination: duration OR hashtag OR type
+                    is_short = is_short_duration or has_shorts_hashtag or is_short_type
                     
                     stats[item['id']] = {
                         'view_count': int(item['statistics'].get('viewCount', 0)),
                         'like_count': int(item['statistics'].get('likeCount', 0)),
                         'comment_count': int(item['statistics'].get('commentCount', 0)),
                         'duration': duration_str,
-                        'duration_seconds': self._parse_duration(duration_str),
-                        'is_short': is_short
+                        'duration_seconds': duration_seconds,
+                        'is_short': is_short,
+                        'is_short_duration': is_short_duration,
+                        'has_shorts_hashtag': has_shorts_hashtag,
+                        'is_short_type': is_short_type,
+                        'title': item['snippet'].get('title', ''),
+                        'description': item['snippet'].get('description', '')
                     }
                     
             except Exception as e:
@@ -419,7 +443,15 @@ class YouTubeMonitor:
                     )
                     video_data['published_at'] = published_at
                     
-                    video = Video(**video_data)
+                    # Filter out extra fields that aren't in the Video model
+                    video_fields = {
+                        'video_id', 'channel_id', 'title', 'description', 
+                        'published_at', 'duration', 'duration_seconds', 'is_short',
+                        'thumbnail_url', 'view_count', 'like_count', 'comment_count'
+                    }
+                    filtered_video_data = {k: v for k, v in video_data.items() if k in video_fields}
+                    
+                    video = Video(**filtered_video_data)
                     self.db.add(video)
                     new_videos.append(video_data)
                     logger.info(f"New short video detected: {video_data['title']} ({video_stats.get('duration_seconds', 0)}s)")
